@@ -1,0 +1,18 @@
+generator client {
+  provider             = "prisma-client-py"
+  recursive_type_depth = 5
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// This represents Playwright's session/cookie state
+model EMRSession {
+  id               Int      @id @default(autoincrement())
+  telegram_user_id String   @unique
+  storage_state    Json     // Prisma natively maps this to Supabase JSONB
+  updated_at       DateTime @updatedAt
+}
