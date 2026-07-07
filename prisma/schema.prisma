@@ -9,10 +9,42 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
-// This represents Playwright's session/cookie state
+enum UserRole {
+  ADMIN
+  DOCTOR
+  NURSE
+  READONLY
+}
+
+model User {
+  id           String      @id @default(uuid())
+
+  telegramId   BigInt      @unique
+  username     String?
+  firstName    String
+  lastName     String?
+
+  role         UserRole    @default(READONLY)
+  approved     Boolean     @default(false)
+
+  sessions      EMRSession[]
+
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+}
+
 model EMRSession {
-  id               Int      @id @default(autoincrement())
-  telegram_user_id String   @unique
-  storage_state    Json     // Prisma natively maps this to Supabase JSONB
-  updated_at       DateTime @updatedAt
+
+  id            String      @id @default(uuid())
+
+  userId        String
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  storageState  Json
+
+  expiresAt     DateTime?
+  lastLogin     DateTime?
+
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
 }
