@@ -11,3 +11,4 @@ class EntityNotFound(DatabaseError):
 
 class DuplicateEntity(DatabaseError):
     """Duplicate entity exists."""
+

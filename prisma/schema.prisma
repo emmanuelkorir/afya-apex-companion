@@ -23,7 +23,7 @@ model User {
   username     String?
   firstName    String
   lastName     String?
-
+  emrUsername   String?
   role         UserRole    @default(READONLY)
   approved     Boolean     @default(false)
 

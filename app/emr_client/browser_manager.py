@@ -1,64 +1,44 @@
-import asyncio
-from playwright.async_api import (
-    Browser,
-    BrowserContext,
-    Page,
-    Playwright,
-    async_playwright,
-)
+"""Owns the Playwright browser lifecycle. No login logic, no repositories, no settings."""
 
-from app.emr_client.pages.login_page import LoginService
+from __future__ import annotations
+from playwright.async_api import Browser, BrowserContext, Playwright, async_playwright
 
-from app.config.settings import settings
 
 class BrowserManager:
-    def __init__(self, headless: bool = False):
+    """Manages a single long-lived Playwright Browser instance.
+
+    Hands out fresh BrowserContexts per caller so each EMR login gets an
+    isolated cookie/storage jar. Knows nothing about EMR credentials or
+    what a caller does with a context once it has one.
+    """
+
+    def __init__(self, headless: bool = True) -> None:
         self.headless = headless
-
         self._playwright: Playwright | None = None
-        self.browser: Browser | None = None
-        self.context: BrowserContext | None = None
-        self.page: Page | None = None
-
-        self.login_service = LoginService()
+        self._browser: Browser | None = None
 
     async def start(self) -> None:
-        """Start Playwright and launch the browser."""
-
+        """Start Playwright and launch the browser. Safe to call once at app startup."""
+        if self._browser is not None:
+            return
         self._playwright = await async_playwright().start()
+        self._browser = await self._playwright.chromium.launch(headless=self.headless)
 
-        self.browser = await self._playwright.chromium.launch(
-            headless=self.headless
-        )
-
-        self.context = await self.browser.new_context()
-        self.page = await self.context.new_page()
-
-    async def login(self) -> None:
-        """Authenticate into the EMR."""
-
-        if self.page is None:
-            raise RuntimeError("Browser has not been started.")
-
-        await self.login_service.login(self.page, settings.emr_dummy_user,
-    settings.emr_dummy_pass,)
-
-    async def save_storage_state(self, path: str = "storage_state.json") -> None:
-        """Save authenticated browser session."""
-
-        if self.context is None:
-            raise RuntimeError("Browser has not been started.")
-
-        await self.context.storage_state(path=path)
+    async def new_context(self) -> BrowserContext:
+        """Create a fresh, isolated browser context for a single login/session."""
+        return await self.browser.new_context()
 
     async def close(self) -> None:
-        """Close browser and Playwright."""
-
-        if self.context:
-            await self.context.close()
-
-        if self.browser:
-            await self.browser.close()
-
-        if self._playwright:
+        """Close the browser and stop Playwright. Call once at app shutdown."""
+        if self._browser is not None:
+            await self._browser.close()
+            self._browser = None
+        if self._playwright is not None:
             await self._playwright.stop()
+            self._playwright = None
+
+    @property
+    def browser(self) -> Browser:
+        if self._browser is None:
+            raise RuntimeError("BrowserManager not started — call start() first")
+        return self._browser

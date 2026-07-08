@@ -4,6 +4,7 @@ from typing import Protocol
 
 from prisma.enums import UserRole
 from prisma.models import User
+from app.auth.schemas import AuthenticatedSession
 
 
 class AuthenticationService(Protocol):
@@ -14,7 +15,14 @@ class AuthenticationService(Protocol):
         username: str | None,
         first_name: str,
         last_name: str | None,
-    ) -> User: ...
+    ) -> AuthenticatedSession: ...
+
+    async def login_to_emr(
+        self,
+        user: User,
+        emr_username: str,
+        emr_password: str,
+    ) -> AuthenticatedSession: ...
 
     async def authorize(self, user: User, required_role: UserRole) -> None: ...
 
