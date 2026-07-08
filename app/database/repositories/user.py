@@ -183,3 +183,18 @@ class UserRepository(BaseRepository):
             raise
         except Exception as e:
             raise DatabaseError(f"Unexpected error deleting user {user_id}") from e
+        
+    async def set_emr_username(self, user_id: str, emr_username: str) -> User:
+        """Store the user's EMR username after their first successful EMR login."""
+        try:
+            result = await self.client.user.update(
+                where={"id": user_id},
+                data={"emrUsername": emr_username},
+            )
+            if result is None:
+                raise DatabaseError(f"User {user_id} not found")
+            return result
+        except PrismaError as e:
+            raise DatabaseError(f"Failed to set EMR username for user {user_id}") from e
+        except Exception as e:
+            raise DatabaseError(f"Unexpected error setting EMR username for user {user_id}") from e
