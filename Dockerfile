@@ -21,9 +21,13 @@ COPY . .
 
 # Generate Prisma client (must run after dependencies are installed)
 RUN prisma generate
+# Make the generated client importable for the runtime
+ENV PYTHONPATH="/app/.prisma:${PYTHONPATH}"
+# Optional sanity check to ensure Prisma import works at build time
+RUN python -c "import prisma; print('Prisma import OK')"
 
 # Expose the port FastAPI‑Cloud will bind to (default $PORT, fallback 8000)
 EXPOSE 8000
 
 # Default command – FastAPI‑Cloud will replace ${PORT} with the runtime env var
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "${PORT}"]
+CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}"]
