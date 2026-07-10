@@ -24,8 +24,12 @@ class BrowserManager:
         self._playwright = await async_playwright().start()
         self._browser = await self._playwright.chromium.launch(headless=self.headless)
 
-    async def new_context(self) -> BrowserContext:
-        """Create a fresh, isolated browser context for a single login/session."""
+    async def new_context(self, storage_state: dict | None = None) -> BrowserContext:
+        """Create a fresh browser context, optionally restoring a saved
+        storage_state (cookies/localStorage) for an already-authenticated session.
+        """
+        if storage_state is not None:
+            return await self.browser.new_context(storage_state=storage_state)
         return await self.browser.new_context()
 
     async def close(self) -> None:

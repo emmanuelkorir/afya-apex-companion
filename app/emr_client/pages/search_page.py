@@ -1,122 +1,121 @@
-import re
-from playwright.sync_api import Playwright, sync_playwright, expect
+"""Playwright page automation for EMR patient search."""
 
-def run(playwright: Playwright) -> None:
-    browser = playwright.chromium.launch(headless=False)
-    context = browser.new_context()
-    page = context.new_page()
+from __future__ import annotations
+from dataclasses import dataclass
 
-    # Global default timeout – 60 seconds for slow .NET postbacks
-    page.set_default_timeout(60000)
+from playwright.async_api import Page
 
-    page.goto("https://emr-hmis.apeiro-digital.com/Login.aspx?ReturnUrl=%2f")
-    page.wait_for_load_state("networkidle")  # Ensure login page is fully loaded
+# Telerik/ASP.NET AJAX postbacks can be slow; give generous timeouts
+# rather than the Playwright default of 30s.
+_ELEMENT_TIMEOUT_MS = 60_000
 
-    # 1. User Name
-    expect(page.get_by_role("textbox", name="User Name")).to_be_visible()
-    page.get_by_role("textbox", name="User Name").fill("42157")
 
-    # 2. Password
-    expect(page.get_by_role("textbox", name="Password")).to_be_visible()
-    page.get_by_role("textbox", name="Password").fill("1234")
+@dataclass(slots=True)
+class PatientSearchResult:
+    row_index: int
+    umr: str
+    visit_no: str
+    name: str
+    age_gender: str
+    ward: str
 
-    # 3. Login (only once)
-    login_btn = page.get_by_role("button", name="Login")
-    expect(login_btn).to_be_visible()
-    login_btn.click()
-    login_btn = page.get_by_role("button", name="Login")
-    expect(login_btn).to_be_visible()
-    login_btn.click()
-    # Wait for post‑login navigation to finish
-    page.wait_for_load_state("networkidle")
 
-    # 1. Patient Search after logging in 
-    pane = page.locator("#RAD_SLIDING_PANE_TEXT_ctl00_rdpAppList")
-    expect(pane).to_be_visible()
-    pane.click()
+class SearchService:
+    _MAX_RESULTS = 5
 
-    # 2. Search field
-    search = page.locator("input[name=\"ctl00$fp1$txtSearchN\"]")
-    expect(search).to_be_visible()
-    search.click()
-    search.fill("UMR PATIENT NUMBER TO SEARCH ENTERED BY USER ON TELEGRAM")
+    async def search_by_umr(self, page: Page, umr: str) -> list[PatientSearchResult]:
+        # Ensure any in-flight AJAX/postback from the prior page load has
+        # settled before we start looking for elements.
+        
+        await page.wait_for_load_state("networkidle")
 
-    # 3. Visit Type dropdown
-    visit_input = page.locator("input[name=\"ctl00$fp1$drpVisitType\"]")
-    expect(visit_input).to_be_visible()
-    visit_input.click()
-    # Wait for dropdown list item
-    ip_item = page.get_by_text("IP", exact=True)
-    expect(ip_item).to_be_visible()
-    ip_item.click()
+        pane = page.locator("#RAD_SLIDING_PANE_TEXT_ctl00_rdpAppList")
+        
+        await pane.wait_for(state="visible", timeout=_ELEMENT_TIMEOUT_MS)
+    
+        await pane.click()
 
-    # 4. Provider dropdown
-    provider_input = page.locator("#ctl00_fp1_ddlProvider_Input")
-    expect(provider_input).to_be_visible()
-    provider_input.click()
-    all_item = page.get_by_text("All", exact=True)
-    expect(all_item).to_be_visible()
-    all_item.click()
+        search = page.locator('input[name="ctl00$fp1$txtSearchN"]')
+        await search.wait_for(state="visible", timeout=_ELEMENT_TIMEOUT_MS)
+        await search.click()
+        await search.fill(umr)
 
-    # 5. Date Range dropdown
-    range_input = page.locator("#ctl00_fp1_ddlrange_Input")
-    expect(range_input).to_be_visible()
-    range_input.click()
-    select_all = page.get_by_text("Select All", exact=True)
-    expect(select_all).to_be_visible()
-    select_all.click()
+        visit_input = page.locator('input[name="ctl00$fp1$drpVisitType"]')
+        await visit_input.click()
+        await page.get_by_text("IP", exact=True).click()
 
-    # 6. Specialization (checkbox dropdown)
-    spec_input = page.locator("#ctl00_fp1_radSpecialization_Input")
-    expect(spec_input).to_be_visible()
-    spec_input.click()
-    first_checkbox = page.get_by_role("checkbox").first
-    expect(first_checkbox).to_be_visible()
-    first_checkbox.check()
+        # provider_input = page.locator("#ctl00_fp1_ddlProvider_Input")
+        # await provider_input.click()
+        # await page.get_by_text("All", exact=True).click()
 
-    # 7. Appointment Status (checkbox dropdown)
-    status_input = page.locator("#ctl00_fp1_ddlAppointmentStatus_Input")
-    expect(status_input).to_be_visible()
-    status_input.click()
-    first_checkbox_status = page.get_by_role("checkbox").first
-    expect(first_checkbox_status).to_be_visible()
-    first_checkbox_status.check()
+        provider_input = page.locator("#ctl00_fp1_ddlProvider_Input")
+        
+        await provider_input.wait_for(state="visible", timeout=_ELEMENT_TIMEOUT_MS)
 
-    # 8. Ward (checkbox dropdown)
-    ward_input = page.locator("input[name=\"ctl00$fp1$ddlWard\"]")
-    expect(ward_input).to_be_visible()
-    ward_input.click()
-    first_ward_checkbox = page.get_by_role("checkbox").first
-    expect(first_ward_checkbox).to_be_visible()
-    first_ward_checkbox.check()
+        await provider_input.click()
 
-    # 9. Refresh button (triggers postback)
-    refresh_btn = page.get_by_role("button", name="Refresh")
-    expect(refresh_btn).to_be_visible()
-    refresh_btn.click()
-    # Wait for the grid to reload after the postback
-    page.wait_for_load_state("networkidle")
+        await provider_input.press("Control+A")  # Select all text
 
-    # 10. First patient link
-    patient = page.locator("a[id$='_lblName']").first
-    expect(patient).to_be_visible()
-    patient.click()
+        await provider_input.press("Delete")
 
-    # 11. Wait for patient dashboard
-    page.wait_for_url("**/PatientDashboardForDoctor.aspx")
-    page.wait_for_load_state("networkidle")
+        await provider_input.type("All", delay=100)
 
-    ## Fill Progress Notes
-    page.locator("#ctl00_ContentPlaceHolder1_txtProgressNote").click()
-    page.locator("#ctl00_ContentPlaceHolder1_txtProgressNote").fill("THIS IS WHAT USER TYPES ON TELEGRAM TO ADD AS PROGRESS NOTES")
-    page.get_by_role("button", name="Save (F3)").click()
+        await provider_input.press("Enter")
 
-    ### Orders and procedures
-    page.get_by_role("button", name="Add Orders And Procedures").click()
+        
+        await page.get_by_role("button", name="Refresh").click()
 
-    # ---------------------
-    context.close()
-    browser.close()
+        await page.wait_for_load_state("networkidle", timeout=_ELEMENT_TIMEOUT_MS)
 
-with sync_playwright() as playwright:
-    run(playwright)
+        return await self._extract_results(page)
+
+    # ... _extract_results, total_result_count, select_row unchanged ...
+
+    async def _extract_results(self, page: Page) -> list[PatientSearchResult]:
+        rows = page.locator(
+            "table[id*='gvEncounter'] tr.rgRow, table[id*='gvEncounter'] tr.rgAltRow"
+        )
+        count = await rows.count()
+
+        results: list[PatientSearchResult] = []
+        for i in range(min(count, self._MAX_RESULTS)):
+            row = rows.nth(i)
+            umr = await row.locator("[id$='_lblRegistrationNo']").inner_text()
+            visit_no = await row.locator("[id$='_lblEncounterNo']").inner_text()
+            name = await row.locator("[id$='_lblName']").inner_text()
+            age_gender = await row.locator("[id$='_lblAgeGender']").inner_text()
+            ward = await row.locator("[id$='_lblBedNo']").inner_text()
+
+            results.append(
+                PatientSearchResult(
+                    row_index=i,
+                    umr=umr.strip(),
+                    visit_no=visit_no.strip(),
+                    name=name.strip(),
+                    age_gender=age_gender.strip(),
+                    ward=ward.strip(),
+                )
+            )
+        return results
+
+    async def total_result_count(self, page: Page) -> int:
+        """Return the full grid row count, even beyond the 5 we extract —
+        used to tell the user "Showing 5 of N, please narrow your search."
+        """
+        rows = page.locator(
+            "table[id*='gvEncounter'] tr.rgRow, table[id*='gvEncounter'] tr.rgAltRow"
+        )
+        return await rows.count()
+
+    async def select_row(self, page: Page, row_index: int) -> None:
+        """Click the 'Select' link for a given row and wait for the
+        patient dashboard to load.
+        """
+        rows = page.locator(
+            "table[id*='gvEncounter'] tr.rgRow, table[id*='gvEncounter'] tr.rgAltRow"
+        )
+        row = rows.nth(row_index)
+        await row.locator("[id$='_lnkSelect']").click()
+
+        await page.wait_for_url("**/PatientDashboardForDoctor.aspx")
+        await page.wait_for_load_state("networkidle")
