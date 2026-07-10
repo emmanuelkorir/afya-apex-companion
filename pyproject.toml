@@ -13,3 +13,6 @@ dependencies = [
 ]
 [tool.fastapi]
 entrypoint = "main:app"
+
+[tool.fastapi-cloud]
+build_command = "prisma generate"
