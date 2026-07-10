@@ -64,19 +64,15 @@ class SessionAuthenticationService:
             raise UserNotApproved(f"User {existing_user.id} is not approved")
 
         return await self._build_session(existing_user)
-
+    
     async def login_to_emr(
         self,
         user: User,
         emr_username: str,
         emr_password: str,
     ) -> AuthenticatedSession:
-        """Perform a fresh EMR login and return the updated AuthenticatedSession.
-
-        The password is used once to authenticate and is never persisted.
-        The username IS persisted on first successful login.
-        """
-        await self.emr.login_and_persist(user.id, emr_username, emr_password)
+        """Perform a fresh EMR login and return the updated AuthenticatedSession."""
+        await self.emr.login(user.id, emr_username, emr_password)
 
         if user.emrUsername != emr_username:
             user = await self.users.set_emr_username(user.id, emr_username)
@@ -84,14 +80,10 @@ class SessionAuthenticationService:
         return await self._build_session(user)
 
     async def _build_session(self, user: User) -> AuthenticatedSession:
-        emr_session = await self.emr.get_active_session(user.id)
-        requires_login = emr_session is None or (
-            emr_session.expiresAt is not None
-            and emr_session.expiresAt <= datetime.now(UTC)
-        )
+        requires_login = not self.emr.is_logged_in(user.id)
         return AuthenticatedSession(
             user=user,
-            emr_session=emr_session,
+            emr_session=None,  # no longer meaningful — live session, not a DB row
             authenticated_at=datetime.now(UTC),
             requires_login=requires_login,
         )
