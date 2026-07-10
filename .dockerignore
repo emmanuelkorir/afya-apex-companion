@@ -1,0 +1,27 @@
+# Exclude local virtual environment – the Dockerfile creates its own
+.venv/
+
+# Python byte-code and caches
+__pycache__/
+*.py[codz]
+*.pyo
+
+# Tests and docs
+tests/
+docs/
+
+# Git metadata
+.git/
+.gitignore
+
+# Env files (secrets should be injected at runtime, not baked into the image)
+.env
+.envrc
+
+# Editor / IDE directories
+.vscode/
+.idea/
+
+# Misc
+*.log
+storage_state.json
