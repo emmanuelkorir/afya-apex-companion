@@ -1,33 +1,34 @@
-# Minimal Dockerfile for FastAPI‑Cloud (includes Prisma client generation)
-# Base image – same Python version you use locally
+# Dockerfile for FastAPI‑Cloud with Prisma client generation
 FROM python:3.13-slim
 
-# Install system packages required by Prisma (gcc) and any DB driver you need (e.g., libpq for PostgreSQL)
+# System deps: gcc for native extensions, libpq-dev for psycopg (PostgreSQL)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Set working directory
 WORKDIR /app
 
-# Install Python dependencies – copy lock files first for layer caching
+# Create an isolated virtual environment so prisma generate targets exactly
+# the same Python that will run the application.
+RUN python -m venv /app/.venv
+ENV PATH="/app/.venv/bin:$PATH"
+
+# Install Python dependencies into the venv
 COPY requirements.txt pyproject.toml ./
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
 
-# Copy the rest of the source code
+# Copy source code (local .venv is excluded via .dockerignore)
 COPY . .
 
-# Generate Prisma client (must run after dependencies are installed)
+# Generate the Prisma client — writes into /app/.venv/lib/.../site-packages/prisma/
 RUN prisma generate
-# Make the generated client importable for the runtime
-ENV PYTHONPATH="/app/.prisma:${PYTHONPATH}"
-# Optional sanity check to ensure Prisma import works at build time
-RUN python -c "import prisma; print('Prisma import OK')"
 
-# Expose the port FastAPI‑Cloud will bind to (default $PORT, fallback 8000)
+# Sanity-check: the venv's prisma package should now be importable
+RUN python -c "from prisma import Prisma; print('Prisma client OK')"
+
 EXPOSE 8000
 
-# Default command – FastAPI‑Cloud will replace ${PORT} with the runtime env var
-CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}"]
+# Use sh -c so ${PORT} is evaluated by the shell at runtime
+CMD ["sh", "-c", "/app/.venv/bin/uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}"]
